@@ -1,8 +1,49 @@
 {
+    "eth0_ip": "192.168.1.1",
+    "drives": [
+        "path1",
+        "path2"
+    ],
+    "files": {
+        "start": "force_start",
+        "stop": "force_stop",
+        "pid": "pid",
+        "transpid": "transpid"
+    },
     "rpc": {
         "host": "127.0.0.1",
-        "port": 9091,
+        "port": "9091",
         "user": "",
-        "pass": ""
-    }
+        "pass": "",
+        "socket": ""
+    },
+    "schedule": {
+        "week": {
+            "start": {
+                "hour": 0,
+                "min": 30
+            },
+            "end": {
+                "hour": 17,
+                "min": 0
+            }
+        },
+        "weekend": {
+            "start": {
+                "hour": 2,
+                "min": 30
+            },
+            "end": {
+                "hour": 7,
+                "min": 0
+            }
+        }
+    },
+    "commands": {
+        "vpn_start": "sudo systemctl start openvpn",
+        "vpn_stop": "sudo systemctl stop openvpn"
+    },
+    "private_trackers": [
+
+    ]
 }

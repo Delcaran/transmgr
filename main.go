@@ -1,4 +1,4 @@
-package main
+package transmgr
 
 import (
 	"encoding/json"
@@ -7,24 +7,56 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
-	"net"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/hekmon/transmissionrpc/v2"
 )
 
 type RPCInfo struct {
-	Host string `json: "host"`
-	Port uint16 `json: "port"`
-	User string `json: "user"`
-	Pass string `json: "pass"`
+	Host   string `json: "host"`
+	Port   string `json: "port"`
+	User   string `json: "user"`
+	Pass   string `json: "pass"`
+	Socket string
 }
 
+type ScheduleTime struct {
+	hour int
+	min  int
+}
+
+type Schedule struct {
+	start ScheduleTime
+	stop  ScheduleTime
+}
+
+type Files struct {
+	start    string
+	stop     string
+	pid      string
+	transpid string
+}
+
+type Commands struct {
+	vpn_start string
+	vpn_stop  string
+}
+
+type trackers []string
+
 type Config struct {
-	RPC RPCInfo `json: "rpc"`
+	eth0_ip  string
+	drives   []string
+	files    Files
+	RPC      RPCInfo `json: "rpc"`
+	schedule struct {
+		week    Schedule
+		weekend Schedule
+	}
+	commands         Commands
+	private_trackers trackers
 }
 
 func loadConfig(configPath string) (Config, error) {
@@ -53,79 +85,63 @@ func loadConfig(configPath string) (Config, error) {
 	return config, nil
 }
 
-func pidof(proc_name string) (int, error) {
-	const proc_dir string = "/proc"
-	if os.Chdir(proc_dir) != nil {
-		return -1, errors.New("/proc unavailable")
+func exists(path string) bool {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true
 	}
-
-	files, err := ioutil.ReadDir(".")
-	if err != nil {
-		return -1, errors.New("unable to read /proc directory")
+	if os.IsNotExist(err) {
+		return false
 	}
-
-	for _, file := range files {
-		// Ignore files, we only care about directories
-		if file.IsDir() {
-			// Our directory name should convert to integer
-			// if it's a PID
-			pid, err := strconv.Atoi(file.Name())
-			if err != nil {
-				continue
-			}
-
-			/*
-				From https://github.com/brgl/busybox/blob/master/libbb/find_pid_by_name.c:
-
-					In Linux we have three ways to determine "process name":
-					1. /proc/PID/stat has "...(name)...", among other things. It's so-called "comm" field.
-					2. /proc/PID/cmdline's first NUL-terminated string. It's argv[0] from exec syscall.
-					3. /proc/PID/exe symlink. Points to the running executable file.
-					kernel threads:
-						comm: thread name
-						cmdline: empty
-						exe: <readlink fails>
-					executable
-						comm: first 15 chars of base name
-						(if executable is a symlink, then first 15 chars of symlink name are used)
-						cmdline: argv[0] from exec syscall
-						exe: points to executable (resolves symlink, unlike comm)
-					script (an executable with #!/path/to/interpreter):
-						comm: first 15 chars of script's base name (symlinks are not resolved)
-						cmdline: /path/to/interpreter (symlinks are not resolved)
-						(script name is in argv[1], args are pushed into argv[2] etc)
-						exe: points to interpreter's executable (symlinks are resolved)
-						If FEATURE_PREFER_APPLETS=y (and more so if FEATURE_SH_STANDALONE=y),
-						some commands started from busybox shell, xargs or find are started by
-						execXXX("/proc/self/exe", applet_name, params....)
-						and therefore comm field contains "exe".
-
-				Therefore we parse the resolved exe symlink, this should cover most of our needs...
-
-			*/
-			exe, err := os.Readlink(file.Name() + "/exe")
-			if err != nil {
-				continue
-			}
-			if strings.Contains(exe, proc_name) {
-				return pid, nil
-			}
-		}
-	}
-	return -1, errors.New("pid not found")
+	return false
 }
 
-func checkOpenPort(host string, port string) (bool, error) {
-	timeout := time.Second
-	conn, err := net.DialTimeout("tcp", net.JoinHostPort(host, port), timeout)
-	if err != nil {
-		return false, err
+func hdd_online(conf *Config) bool {
+	for _, d := range conf.drives {
+		if !exists(d) {
+			return false
+		}
 	}
-	if conn != nil {
-		defer conn.Close()
-		return true, nil
+	return true
+}
+
+func time_based_check(config *Config) bool {
+	t := time.Now()
+	schedule := config.schedule.week
+	if t.Weekday() == time.Saturday || t.Weekday() == time.Sunday {
+		schedule = config.schedule.weekend
 	}
-	return false, errors.New("unknow error")
+	start := time.Date(t.Year(), t.Month(), t.Day(), schedule.start.hour, schedule.start.min, 0, 0, t.Location())
+	stop := time.Date(t.Year(), t.Month(), t.Day(), schedule.stop.hour, schedule.stop.min, 0, 0, t.Location())
+
+	return t.After(start) && t.Before(stop)
+}
+
+type SystemState int
+
+const (
+	force_offline SystemState = iota
+	force_online
+	req_offline
+	req_online
+)
+
+func get_state(config *Config, tc *transmissionrpc.Client) SystemState {
+	if exists(config.files.stop) {
+		return force_offline
+	}
+	if exists(config.files.start) {
+		return force_online
+	}
+	time_is_right := time_based_check(config)
+	data_to_transfer := torrents_based_check(tc) || check_seed_need(config, tc)
+	if !time_is_right || !data_to_transfer {
+		return req_offline
+	}
+	if time_is_right && data_to_transfer {
+		return req_online
+	}
+	return req_offline
 }
 
 func main() {
@@ -139,11 +155,43 @@ func main() {
 		log.Fatalln("Failed configuration loading: ", err)
 	}
 
-	tclient, err := transmissionrpc.New(config.RPC.Host, config.RPC.User, config.RPC.Pass, &transmissionrpc.AdvancedConfig{Port: config.RPC.Port})
-	if err != nil {
-		log.Fatalln("Failed creating client: ", err)
+	local_ip_address := localhost
+
+	if !hdd_online(&config) {
+		log.Println("NO HARD DRIVES!!!")
+		log.Println("Stopping Transmission: ")
+		//command = "/usr/bin/transmission-remote %s:%s -n %s:%s --exit" % (rpc_param['address'], rpc_param['port'], rpc_param['user'], rpc_param['password'])
+		//if run_process_and_check(command.split(' '), "transmission-daemon", False):
+		//    log.Println("Transmission stopped")
+		//else:
+		//    log.Println("Error stopping Transmission")
+		//    commandkill = "sudo killall transmission-daemon"
+		//    if run_process_and_check(commandkill.split(' '), "transmission-daemon", False):
+		//        log.Println("Transmission killed")
+		//    else:
+		//        log.Println("Error killing Transmission")
+	} else {
+		uintport, _ := strconv.ParseUint(config.RPC.Port, 10, 16)
+		tclient, err := transmissionrpc.New(config.RPC.Host, config.RPC.User, config.RPC.Pass, &transmissionrpc.AdvancedConfig{Port: uint16(uintport)})
+		if err != nil {
+			log.Fatalln("Failed creating client: ", err)
+		}
+		switch get_state(&config, tclient) {
+		case force_offline:
+			log.Println("Transmission forced OFFLINE")
+			local_ip_address = manage_vpn(&config, false)
+		case force_online:
+			log.Println("Transmission forced ONLINE")
+			local_ip_address = manage_vpn(&config, true)
+		case req_offline:
+			log.Println("Transmission should be OFFLINE")
+			local_ip_address = manage_vpn(&config, false)
+		case req_online:
+			log.Println("Transmission should be ONLINE")
+			local_ip_address = manage_vpn(&config, true)
+		}
+		check_transmission_socket(&config, tclient, local_ip_address)
 	}
-	fmt.Printf("%+v", tclient)
 
 	log.Println("Done.")
 }
