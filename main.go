@@ -147,7 +147,7 @@ func getSystemState(config *Config, tc *transmissionrpc.Client) SystemState {
 func main() {
 	// Load configuration
 
-	configPath := flag.String("config", "./config.json", "Configuration path")
+	configPath := flag.String("config", "./transmgr.json", "Configuration path")
 
 	flag.Parse()
 	config, err := loadConfig(*configPath)
