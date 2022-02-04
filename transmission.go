@@ -66,7 +66,7 @@ func checkTorrentsDownloading(config *Config) bool {
 func checkTransmissionSocket(config *Config, wanted_ip string) {
 	log.Println("Check if Transmission on " + wanted_ip)
 	const proc_name string = "transmission-daemon"
-	port_open := checkOpenPort(wanted_ip, config.RPC.Socket)
+	port_open := checkOpenPort(wanted_ip, config.RPC.Port)
 
 	if !port_open {
 		log.Println("Transmission not correctly binded")
