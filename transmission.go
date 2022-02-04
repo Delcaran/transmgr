@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/hekmon/transmissionrpc/v2"
@@ -102,15 +103,6 @@ func (s ids) contains(e int64) bool {
 	return false
 }
 
-func (s trackers) contains(e string) bool {
-	for _, a := range s {
-		if a == e {
-			return true
-		}
-	}
-	return false
-}
-
 func checkSeedNeed(config *Config, tc *transmissionrpc.Client) bool {
 	torrents, err := tc.TorrentGetAll(context.TODO())
 	if err != nil {
@@ -131,9 +123,11 @@ func checkSeedNeed(config *Config, tc *transmissionrpc.Client) bool {
 				}
 			}
 			for _, tracker := range torrent.Trackers {
-				if newtorrent && (config.private_trackers.contains(tracker.Announce) || config.private_trackers.contains(tracker.Scrape)) {
-					if !id_to_start.contains(*torrent.ID) {
-						id_to_start = append(id_to_start, *torrent.ID)
+				for _, trackerid := range config.private_trackers {
+					if newtorrent && (strings.Contains(tracker.Announce, trackerid) || strings.Contains(tracker.Scrape, trackerid)) {
+						if !id_to_start.contains(*torrent.ID) {
+							id_to_start = append(id_to_start, *torrent.ID)
+						}
 					}
 				}
 			}
