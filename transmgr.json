@@ -1,21 +1,22 @@
 {
     "eth0_ip": "192.168.1.1",
     "drives": [
-        "path1",
-        "path2"
+        "hdd1/.alive",
+        "hdd2/.alive"
     ],
     "files": {
-        "start": "force_start",
-        "stop": "force_stop",
-        "pid": "pid",
-        "transpid": "transpid"
+        "start": ".torrent/force_torrent",
+        "stop": ".torrent/stop_torrent",
+        "pid": ".torrent/mgr",
+        "transpid": ".config/trans.pid",
+        "bgscript": "scripts/runbg.sh"
     },
     "rpc": {
         "host": "127.0.0.1",
         "port": "9091",
-        "user": "",
-        "pass": "",
-        "socket": ""
+        "user": "usr",
+        "pass": "pwd",
+        "socket": "123"
     },
     "schedule": {
         "week": {
@@ -40,10 +41,10 @@
         }
     },
     "commands": {
-        "vpn_start": "sudo systemctl start openvpn",
-        "vpn_stop": "sudo systemctl stop openvpn"
+        "vpn_start": "sudo /usr/sbin/openvpn ",
+        "vpn_stop": "sudo killall openvpn"
     },
     "private_trackers": [
-
+        "idoftracker"
     ]
 }

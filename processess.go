@@ -65,6 +65,7 @@ func getPID(proc_name string) int {
 				continue
 			}
 			if strings.Contains(exe, proc_name) {
+				log.Println("PID of " + proc_name + " is " + strconv.Itoa(pid))
 				return pid
 			}
 		}
@@ -72,34 +73,36 @@ func getPID(proc_name string) int {
 	return -1
 }
 
-func runProcessAndCheck(command string, args []string, proc string, start bool) bool {
-	strargs := strings.Join(args[:], " ")
-	log.Println("Running command " + command + " " + strargs)
-	cmd := exec.Command(command, strargs)
-	err := cmd.Start()
-	if err != nil {
-		return false
-	}
+func runProcessAndCheck(config *Config, mycmd string, proc string, start bool) bool {
+	if len(mycmd) > 0 {
+		cmd := exec.Command("/bin/sh", config.Files.RunBG, "\""+mycmd+"\"")
+		log.Println("Launching ", cmd)
+		err := cmd.Run()
+		if err != nil {
+			return false
+		}
 
-	if start {
-		log.Print("Check if running ")
-		for getPID(proc) == -1 {
-			log.Print(".")
-			time.Sleep(10 * time.Second)
-		}
-		log.Println(" OK")
-		return true
-	} else {
-		log.Print("Check if still running ")
-		count := 0
-		for count < 10 {
-			if getPID(proc) != -1 {
-				return true
+		if start {
+			log.Print("Check if running ")
+			for getPID(proc) == -1 {
+				log.Print(".")
+				time.Sleep(10 * time.Second)
 			}
-			count++
-			log.Print(".")
-			time.Sleep(10 * time.Second)
+			log.Println(" OK")
+			return true
+		} else {
+			log.Print("Check if still running ")
+			count := 0
+			for count < 10 {
+				if getPID(proc) != -1 {
+					return true
+				}
+				count++
+				log.Print(".")
+				time.Sleep(10 * time.Second)
+			}
+			return false
 		}
-		return false
 	}
+	return false
 }

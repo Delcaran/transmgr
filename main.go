@@ -10,8 +10,6 @@ import (
 	"os"
 	"strconv"
 	"time"
-
-	"github.com/hekmon/transmissionrpc/v2"
 )
 
 type RPCInfo struct {
@@ -19,44 +17,50 @@ type RPCInfo struct {
 	Port   string `json:"port"`
 	User   string `json:"user"`
 	Pass   string `json:"pass"`
-	Socket string
+	Socket string `json:"rpc"`
 }
 
 type ScheduleTime struct {
-	hour int
-	min  int
+	Hour int `json:"hour"`
+	Min  int `json:"min"`
 }
 
 type Schedule struct {
-	start ScheduleTime
-	stop  ScheduleTime
+	Start ScheduleTime `json:"start"`
+	Stop  ScheduleTime `json:"stop"`
 }
 
 type Files struct {
-	start    string
-	stop     string
-	pid      string
-	transpid string
+	Start    string `json:"start"`
+	Stop     string `json:"stop"`
+	Pid      string `json:"pid"`
+	Transpid string `json:"transpid"`
+	RunBG    string `json:"bgscript"`
 }
 
 type Commands struct {
-	vpn_start string
-	vpn_stop  string
+	StartVPN string `json:"vpn_start"`
+	StopVPN  string `json:"vpn_stop"`
 }
 
 type trackers []string
 
 type Config struct {
-	eth0_ip  string
-	drives   []string
-	files    Files
-	RPC      RPCInfo `json:"rpc"`
-	schedule struct {
-		week    Schedule
-		weekend Schedule
-	}
-	commands         Commands
-	private_trackers trackers
+	Eth0     string   `json:"eth0_ip"`
+	Drives   []string `json:"drives"`
+	Files    Files    `json:"files"`
+	RPC      RPCInfo  `json:"rpc"`
+	Schedule struct {
+		Week    Schedule `json:"week"`
+		Weekend Schedule `json:"weekend"`
+	} `json:"schedule"`
+	Commands        Commands `json:"commands"`
+	PrivateTrackers trackers `json:"private_trackers"`
+}
+
+func toUint16(n string) uint16 {
+	uintport, _ := strconv.ParseUint(n, 10, 16)
+	return uint16(uintport)
 }
 
 func loadConfig(configPath string) (Config, error) {
@@ -97,7 +101,7 @@ func exists(path string) bool {
 }
 
 func checkHDD(conf *Config) bool {
-	for _, d := range conf.drives {
+	for _, d := range conf.Drives {
 		if !exists(d) {
 			return false
 		}
@@ -107,12 +111,12 @@ func checkHDD(conf *Config) bool {
 
 func checkTime(config *Config) bool {
 	t := time.Now()
-	schedule := config.schedule.week
+	schedule := config.Schedule.Week
 	if t.Weekday() == time.Saturday || t.Weekday() == time.Sunday {
-		schedule = config.schedule.weekend
+		schedule = config.Schedule.Weekend
 	}
-	start := time.Date(t.Year(), t.Month(), t.Day(), schedule.start.hour, schedule.start.min, 0, 0, t.Location())
-	stop := time.Date(t.Year(), t.Month(), t.Day(), schedule.stop.hour, schedule.stop.min, 0, 0, t.Location())
+	start := time.Date(t.Year(), t.Month(), t.Day(), schedule.Start.Hour, schedule.Start.Min, 0, 0, t.Location())
+	stop := time.Date(t.Year(), t.Month(), t.Day(), schedule.Stop.Hour, schedule.Stop.Min, 0, 0, t.Location())
 
 	return t.After(start) && t.Before(stop)
 }
@@ -126,15 +130,15 @@ const (
 	req_online
 )
 
-func getSystemState(config *Config, tc *transmissionrpc.Client) SystemState {
-	if exists(config.files.stop) {
+func getSystemState(config *Config) SystemState {
+	if exists(config.Files.Stop) {
 		return force_offline
 	}
-	if exists(config.files.start) {
+	if exists(config.Files.Start) {
 		return force_online
 	}
 	time_is_right := checkTime(config)
-	data_to_transfer := checkTorrentsDownloading(tc) || checkSeedNeed(config, tc)
+	data_to_transfer := checkTorrentsDownloading(config) || checkSeedNeed(config)
 	if !time_is_right || !data_to_transfer {
 		return req_offline
 	}
@@ -155,8 +159,8 @@ func main() {
 		log.Fatalln("Failed configuration loading: ", err)
 	}
 
-	if !exists(config.files.pid) {
-		os.OpenFile(config.files.pid, os.O_RDONLY|os.O_CREATE, 0666)
+	if !exists(config.Files.Pid) {
+		os.OpenFile(config.Files.Pid, os.O_RDONLY|os.O_CREATE, 0666)
 		local_ip_address := localhost
 
 		if !checkHDD(&config) {
@@ -173,29 +177,31 @@ func main() {
 			//    else:
 			//        log.Println("Error killing Transmission")
 		} else {
-			uintport, _ := strconv.ParseUint(config.RPC.Port, 10, 16)
-			tclient, err := transmissionrpc.New(config.RPC.Host, config.RPC.User, config.RPC.Pass, &transmissionrpc.AdvancedConfig{Port: uint16(uintport)})
-			if err != nil {
-				log.Fatalln("Failed creating client: ", err)
+			port_open := checkOpenPort(local_ip_address, config.RPC.Socket)
+
+			if !port_open {
+				if err != nil {
+					log.Fatalln("Failed creating client: ", err)
+				}
+				switch getSystemState(&config) {
+				case force_offline:
+					log.Println("Transmission forced OFFLINE")
+					local_ip_address = manageVPN(&config, false)
+				case force_online:
+					log.Println("Transmission forced ONLINE")
+					local_ip_address = manageVPN(&config, true)
+				case req_offline:
+					log.Println("Transmission should be OFFLINE")
+					local_ip_address = manageVPN(&config, false)
+				case req_online:
+					log.Println("Transmission should be ONLINE")
+					local_ip_address = manageVPN(&config, true)
+				}
 			}
-			switch getSystemState(&config, tclient) {
-			case force_offline:
-				log.Println("Transmission forced OFFLINE")
-				local_ip_address = manageVPN(&config, false)
-			case force_online:
-				log.Println("Transmission forced ONLINE")
-				local_ip_address = manageVPN(&config, true)
-			case req_offline:
-				log.Println("Transmission should be OFFLINE")
-				local_ip_address = manageVPN(&config, false)
-			case req_online:
-				log.Println("Transmission should be ONLINE")
-				local_ip_address = manageVPN(&config, true)
-			}
-			checkTransmissionSocket(&config, tclient, local_ip_address)
+			checkTransmissionSocket(&config, local_ip_address)
 		}
 
 		log.Println("Done.")
-		os.Remove(config.files.pid)
+		os.Remove(config.Files.Pid)
 	}
 }
