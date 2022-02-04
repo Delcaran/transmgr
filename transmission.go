@@ -1,4 +1,4 @@
-package transmgr
+package main
 
 import (
 	"context"
@@ -17,7 +17,7 @@ type TransmissionStats struct {
 	stopped     int
 }
 
-func get_torrents_status(tc *transmissionrpc.Client) (TransmissionStats, error) {
+func getTorrents(tc *transmissionrpc.Client) (TransmissionStats, error) {
 	var status TransmissionStats
 	torrents, err := tc.TorrentGetAll(context.TODO())
 	if err != nil {
@@ -50,15 +50,15 @@ func get_torrents_status(tc *transmissionrpc.Client) (TransmissionStats, error) 
 	return status, nil
 }
 
-func torrents_based_check(tc *transmissionrpc.Client) bool {
-	torrents_status, err := get_torrents_status(tc)
+func checkTorrentsDownloading(tc *transmissionrpc.Client) bool {
+	torrents_status, err := getTorrents(tc)
 	if err != nil {
 		return false
 	}
 	return torrents_status.downloading > 0
 }
 
-func check_transmission_socket(config *Config, tc *transmissionrpc.Client, wanted_ip string) {
+func checkTransmissionSocket(config *Config, tc *transmissionrpc.Client, wanted_ip string) {
 	log.Println("Check if Transmission on " + wanted_ip)
 	const proc_name string = "transmission-daemon"
 	port_open := checkOpenPort(wanted_ip, config.RPC.Socket)
@@ -68,7 +68,7 @@ func check_transmission_socket(config *Config, tc *transmissionrpc.Client, wante
 		log.Println("Stopping Transmission: ")
 		tc.SessionClose(context.TODO())
 
-		for pidof(proc_name) != -1 {
+		for getPID(proc_name) != -1 {
 			log.Println("Waiting for daemon to die")
 			time.Sleep(10 + time.Second)
 		}
@@ -76,7 +76,7 @@ func check_transmission_socket(config *Config, tc *transmissionrpc.Client, wante
 		log.Println("Starting Transmission: ")
 		proc := "transmission-daemon"
 		args := []string{"--bind-address-ipv4", wanted_ip, "-x", config.files.transpid}
-		for !run_process_and_check(proc, args, proc, true) {
+		for !runProcessAndCheck(proc, args, proc, true) {
 			log.Println("Error launching Transmission")
 			time.Sleep(10 + time.Second)
 		}
@@ -111,7 +111,7 @@ func (s trackers) contains(e string) bool {
 	return false
 }
 
-func check_seed_need(config *Config, tc *transmissionrpc.Client) bool {
+func checkSeedNeed(config *Config, tc *transmissionrpc.Client) bool {
 	torrents, err := tc.TorrentGetAll(context.TODO())
 	if err != nil {
 		return false

@@ -1,4 +1,4 @@
-package transmgr
+package main
 
 import (
 	"io/ioutil"
@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-func pidof(proc_name string) int {
+func getPID(proc_name string) int {
 	const proc_dir string = "/proc"
 	if os.Chdir(proc_dir) != nil {
 		return -1
@@ -72,7 +72,7 @@ func pidof(proc_name string) int {
 	return -1
 }
 
-func run_process_and_check(command string, args []string, proc string, start bool) bool {
+func runProcessAndCheck(command string, args []string, proc string, start bool) bool {
 	strargs := strings.Join(args[:], " ")
 	log.Println("Running command " + command + " " + strargs)
 	cmd := exec.Command(command, strargs)
@@ -83,7 +83,7 @@ func run_process_and_check(command string, args []string, proc string, start boo
 
 	if start {
 		log.Print("Check if running ")
-		for pidof(proc) == -1 {
+		for getPID(proc) == -1 {
 			log.Print(".")
 			time.Sleep(10 * time.Second)
 		}
@@ -93,7 +93,7 @@ func run_process_and_check(command string, args []string, proc string, start boo
 		log.Print("Check if still running ")
 		count := 0
 		for count < 10 {
-			if pidof(proc) != -1 {
+			if getPID(proc) != -1 {
 				return true
 			}
 			count++
