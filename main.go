@@ -31,16 +31,16 @@ type Schedule struct {
 }
 
 type Files struct {
-	Start    string `json:"start"`
-	Stop     string `json:"stop"`
-	Pid      string `json:"pid"`
-	Transpid string `json:"transpid"`
-	RunBG    string `json:"bgscript"`
+	Start string `json:"start"`
+	Stop  string `json:"stop"`
+	Pid   string `json:"pid"`
+	Bind  string `json:"bind"`
 }
 
 type Commands struct {
-	StartVPN string `json:"vpn_start"`
-	StopVPN  string `json:"vpn_stop"`
+	StartTrans string `json:"trans_start"`
+	StartVPN   string `json:"vpn_start"`
+	StopVPN    string `json:"vpn_stop"`
 }
 
 type trackers []string

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"io/ioutil"
 	"log"
 	"os"
@@ -60,6 +61,22 @@ func getPID(proc_name string) int {
 				Therefore we parse the resolved exe symlink, this should cover most of our needs...
 
 			*/
+			// script
+			comm, err := os.Open(file.Name() + "/comm")
+			if err != nil {
+				return -1
+			}
+			defer comm.Close()
+			scanner := bufio.NewScanner(comm)
+			for scanner.Scan() {
+				if strings.Contains(scanner.Text(), proc_name) {
+					return pid
+				}
+			}
+			if err := scanner.Err(); err != nil {
+				return -1
+			}
+			// executable
 			exe, err := os.Readlink(file.Name() + "/exe")
 			if err != nil {
 				continue
@@ -73,36 +90,36 @@ func getPID(proc_name string) int {
 	return -1
 }
 
-func runProcessAndCheck(config *Config, mycmd string, proc string, start bool) bool {
-	if len(mycmd) > 0 {
-		cmd := exec.Command("/bin/sh", config.Files.RunBG, "\""+mycmd+"\"")
-		log.Println("Launching ", cmd)
-		err := cmd.Run()
-		if err != nil {
-			return false
-		}
-
-		if start {
-			log.Print("Check if running ")
-			for getPID(proc) == -1 {
-				log.Print(".")
-				time.Sleep(10 * time.Second)
-			}
-			log.Println(" OK")
-			return true
-		} else {
-			log.Print("Check if still running ")
-			count := 0
-			for count < 10 {
-				if getPID(proc) != -1 {
-					return true
-				}
-				count++
-				log.Print(".")
-				time.Sleep(10 * time.Second)
-			}
-			return false
-		}
+func runScriptAndCheck(script string, args string, proc string, start bool) bool {
+	cmd := exec.Command(script)
+	if len(args) > 0 {
+		cmd = exec.Command(script, "\""+args+"\"")
 	}
-	return false
+	log.Println("Launching ", cmd)
+	err := cmd.Run()
+	if err != nil {
+		return false
+	}
+
+	if start {
+		log.Print("Check if running ")
+		for getPID(proc) == -1 {
+			log.Print(".")
+			time.Sleep(10 * time.Second)
+		}
+		log.Println(" OK")
+		return true
+	} else {
+		log.Print("Check if still running ")
+		count := 0
+		for count < 10 {
+			if getPID(proc) != -1 {
+				return true
+			}
+			count++
+			log.Print(".")
+			time.Sleep(10 * time.Second)
+		}
+		return false
+	}
 }

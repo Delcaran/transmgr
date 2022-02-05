@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net"
 	"time"
@@ -22,22 +23,42 @@ func checkOpenPort(host string, port string) bool {
 	return false
 }
 
-func getLocalOnlineIP() string {
-	conn, err := net.Dial("udp", testhost)
-	if err != nil {
-		return localhost
+func GetInterfaceIpv4Addr(interfaceName string) (addr string, err error) {
+	var (
+		ief      *net.Interface
+		addrs    []net.Addr
+		ipv4Addr net.IP
+	)
+	if ief, err = net.InterfaceByName(interfaceName); err != nil { // get interface
+		return
 	}
-	defer conn.Close()
+	if addrs, err = ief.Addrs(); err != nil { // get addresses
+		return
+	}
+	for _, addr := range addrs { // get ipv4 address
+		if ipv4Addr = addr.(*net.IPNet).IP.To4(); ipv4Addr != nil {
+			break
+		}
+	}
+	if ipv4Addr == nil {
+		return "", fmt.Errorf("interface %s don't have an ipv4 address", interfaceName)
+	}
+	return ipv4Addr.String(), nil
+}
 
-	localAddr := conn.LocalAddr().(*net.UDPAddr)
-
-	return localAddr.IP.String()
+func getLocalOnlineIP() string {
+	for _, i := range []string{"tun0", "eth0", "lo"} {
+		addr, err := GetInterfaceIpv4Addr(i)
+		if err == nil {
+			return addr
+		}
+	}
+	return localhost
 }
 
 func startVPN(config *Config) string {
 	log.Println("Starting VPN: ")
-	cmd := config.Commands.StartVPN
-	if runProcessAndCheck(config, cmd, "openvpn", true) {
+	if runScriptAndCheck(config.Commands.StartVPN, "", "openvpn", true) {
 		log.Println("VPN running")
 	} else {
 		log.Println("Error launching VPN")
@@ -55,8 +76,7 @@ func startVPN(config *Config) string {
 
 func stopVPN(config *Config) string {
 	log.Print("Stopping VPN: ")
-	cmd := config.Commands.StopVPN
-	if runProcessAndCheck(config, cmd, "openvpn", false) {
+	if runScriptAndCheck(config.Commands.StopVPN, "", "openvpn", false) {
 		log.Println("OK")
 	} else {
 		log.Println("Error stopping VPN")

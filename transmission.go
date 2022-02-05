@@ -83,8 +83,7 @@ func checkTransmissionSocket(config *Config, wanted_ip string) {
 		}
 
 		log.Println("Starting Transmission: ")
-		args := "/usr/bin/" + proc_name + " --bind-address-ipv4 " + wanted_ip + " -x " + config.Files.Transpid
-		for !runProcessAndCheck(config, args, proc_name, true) {
+		for !runScriptAndCheck(config.Commands.StartTrans, wanted_ip, proc_name, true) {
 			log.Println("Error launching Transmission")
 			time.Sleep(10 + time.Second)
 		}
